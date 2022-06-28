@@ -25,8 +25,8 @@ struct Beam{T<:AbstractFloat}
     refr_ind::T
 end
 
-k(b::Beam) = 2pi * b.refr_ind / b.wvlen
-zr(b::Beam) = k(b) / 2
+zr(b::Beam) = pi * b.refr_ind / b.wvlen
+k(b::Beam) = 2zr(b)
 q0(b::Beam) = zr(b) * im
 q(b::Beam) = z -> z + q0(b)
 w(b::Beam) = z -> √(1 + (z / zr(b))^2)
@@ -164,46 +164,55 @@ function coef(N::Integer,K::Integer,apt::AbstractVector)
     return coef(a,ψ)
 end
 
-# calculates herm polys for all degrees up to n
-function h_J(arg::AbstractFloat, phase::Number, n::Integer)
-    h = Array{typeof(phase)}(undef, n + 1)
-    h[1] = one(phase)
-    if n > 0
-        h[2] = phase * arg
+gaussian(a::Complex, x::AbstractFloat) = exp(-a * x^2)
+
+function u_0(q0_q::Complex, x::AbstractFloat)
+    norm = √(√(2/pi) * q0_q)
+    gauss = gaussian(q0_q, x)
+    return norm * gauss
+end
+
+function u_1(q0_q::Complex, x::AbstractFloat)
+    norm = 2(2/pi)^(1/4)
+    gauss = q0_q^(3/2) * x * gaussian(q0_q, x)
+    return norm * gauss
+end
+
+function u(b::Beam, N::Integer, x::AbstractArray, z::AbstractFloat)
+    qz = q(b)(z)
+    q0_q = q0(b) / qz
+    q̅_q = conj(qz) / qz
+    
+    xn = length(x)
+    ret = Array{ComplexF64}(undef, (N+1, xn))
+    # Base case u_0
+    for (i, xi) in enumerate(x)
+        ret[1, i] = u_0(q0_q, xi)
     end
-    if n > 1
-        for i in 2:n
-            h[i+1] = (phase / √i) * arg * h[i] - √((i - 1) / i) * h[i-1]
+    # Base case u_1
+    if N > 0
+        for (i, xi) in enumerate(x)
+            ret[2, i] = u_1(q0_q, xi)
         end
     end
-    return h
+    # Recursive case
+    if N > 1
+        for (i, xi) in enumerate(x), n in 3:(N+1)
+            n_dep = 2xi/√(n-1) * q0_q * ret[n-1,i]
+            nm1_dep = q̅_q * √((n-2)/(n-1)) * ret[n-2,i]
+            ret[n,i] = n_dep + nm1_dep
+        end
+    end
+
+    return ret
 end
 
 function superposition(b::Beam, coefs::AbstractArray, x::AbstractArray, z::AbstractFloat)
-    n = size(coefs)[1] - 1
-
-    qb = q(b)
-    wb = w(b)
-    kb = k(b)
-
-    xn = length(x)
-    
-    phase = √(-conj(qb(z)) / qb(z))
-    herm_arg = @. (2 / wb(z)) * x
-    herms = Array{typeof(phase)}(undef, n+1, xn)
-    for xi in 1:xn
-        herms[:,xi] = h_J(herm_arg[xi], phase, n)
-    end
-
+    N = size(coefs)[1] - 1
+    herms = u(b,N,x,z)
+    fourier = exp(-im * k(b) * z)
     field = herms' * coefs * herms
-
-    gauss = @. exp((-im * kb) / (2*qb(z)) * x^2)
-    gauss_xy = reshape(gauss, (xn,1)) .* reshape(gauss, (1,xn))
-    field .*= gauss_xy
-
-    z_factor = √(2/pi) * (q0(b)/qb(z)) * exp(-im * k(b) * z)
-
-    return field .* z_factor
+    return field .* fourier
 end
 
 """
@@ -213,7 +222,7 @@ function Iplot(I::AbstractMatrix)
     fig = Figure()
     ax = Axis(fig[1,1])
     hidedecorations!(ax)
-    heatmap!(ax, I, colormap=:grays, colorrange=(0,1.5))
+    heatmap!(ax, I, colormap=:grays)
     return fig
 end
 
