@@ -1,4 +1,6 @@
 [deps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Nemo = "2edaba10-b0f1-5616-af89-8c11ac63239a"
+Observables = "510215fc-4207-5dde-b226-833fc4488ee2"
 PolygonOps = "647866c9-e3ac-4575-94e7-e3d426903924"
+WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"

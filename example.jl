@@ -1,34 +1,76 @@
 begin
     include("main.jl")
     using .HGSuperposition
-    using CairoMakie
 end
 
-# Define an aperture
-sq = [
-    [1.0 1.0],
-    [-1.0 1.0],
-    [-1.0 -1.0],
-    [1.0 -1.0]
-] * 0.5     # Scale aperture
+# Define a beam - waist width, wavelength, refractive idnex
+beam = Beam(1.0,633e-6, 1.0)
 
-tri = [
-    [0.0 1.0],
-    [-1.0 -1.0],
-    [1.0 -1.0]
-] * 0.5
+### Definitions for computing superposition coefficients
+begin
+    # Define an aperture
+    sq = Segment([
+        [1.0 1.0],
+        [-1.0 1.0],
+        [-1.0 -1.0],
+        [1.0 -1.0]
+    ] * 0.5)     # Scale aperture
 
-K_reg = K_heuristic(tri,1e-6)
+    # Efield at z=0, power series coefficients
+    E0 = [1;;]
 
-# Calculate coefficients for all modes up to order N
-N = 100
-K = K_reg(N)
-C = coef(N,K,tri); 0
+    # Highest order mode used
+    N = 50
 
-beam = Beam(633e-6, 1.0)
-x = -1:0.005:1
+    # Maximum allowable error on E(x,y,0) for any x,y in the aperture
+    ϵ = 1e-6
+end
 
-E_field = superposition(beam, convert(Array{Float64}, Array(C)), x, 0.0); 0
-I = abs2.(E_field); 0
+# Compute superposition coefficients
+C = coef(beam,sq,E0,ϵ,N); 0
 
-Iplot(I)
+# Note: if nothing appears on the first plot, rerun the function.
+#   Julia compiles the code on the first run and sometimes nothing gets displayed.
+# 2D superposition & plot
+begin
+    x = -1:0.01:1
+    z = 0
+
+    E = superposition(beam,C,x,z); 0
+    I = abs2.(E); 0
+    plot_2D(I)
+end
+
+# 3D superposition & plot
+begin
+    x = -1:0.02:1
+    z = 0:1e2:1e3
+
+    E = superposition(beam,C,x,z); 0
+    I = abs2.(E); 0
+    plot_3D(x,z,I)
+
+end
+
+# 3D with 2D crossection and intensity cutoff
+begin
+    x = -1:0.02:1
+    z = 0:1e2:1e3
+
+    E = superposition(beam,C,x,z); 0
+    I = abs2.(E); 0
+    plot_integrated(x,z,I)
+end
+
+# We can pass our own coefficient matrix into the superposition
+# Complex coefficients work for 2D superpositions
+begin
+    my_coefs = [0.0 1.0; im 0.0]
+
+    x = -2:0.02:2
+    z = 0
+
+    E = superposition(beam,my_coefs,x,z); 0
+    I = abs2.(E); 0
+    plot_2D(I)
+end
