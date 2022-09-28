@@ -271,22 +271,24 @@ begin
     end
 
     """Computes a superposition of Hermite-Gaussian modes for a given
-    Gaussian beam, coefficient matrix (real or complex) over the given coordinates.
+    Gaussian beam, square coefficient matrix (real or complex) over the given coordinates.
     Values of the superposition will be computed on the Cartesian product of x, x, and z.
     Note that z can be a number, in which case a 2D superposition will be returned."""
-    function superposition(b::Beam, coefs::AbstractArray, x::AbstractArray, z::Real)
+    function superposition(b::Beam, coefs::AbstractArray, x::AbstractArray, y::AbstractArray, z::Real)
         N = size(coefs)[1] - 1
-        herms = u(b,N,x,z)
+        herms_x = u(b,N,x,z)
+        herms_y = u(b,N,y,z)
         fourier = exp(-im * k(b) * z)
-        field = herms' * coefs * herms
+        field = herms_x' * coefs * herms_y
         return field .* fourier
     end
 
-    function superposition(b::Beam, coefs::AbstractArray, x::AbstractArray, z::AbstractArray)
-        return permutedims(cat((superposition(b,coefs,x,zi) for (i,zi) in enumerate(z))...; dims=3), [3,1,2])
+    function superposition(b::Beam, coefs::AbstractArray, x::AbstractArray, y::AbstractArray, z::AbstractArray)
+        return permutedims(cat((superposition(b,coefs,x,y,zi) for (i,zi) in enumerate(z))...; dims=3), [3,1,2])
     end
 
-    superposition(b::Beam,coefs::arb_mat,x,z) = superposition(b,convert(Array{Float64},Array(coefs)),x,z)
+    superposition(b::Beam,coefs::arb_mat,x,y,z) = superposition(b,convert(Array{Float64},Array(coefs)),x,y,z)
+    superposition(b::Beam, coefs, x, z) = superposition(b,coefs,x,x,z)
 end
 
 
@@ -313,7 +315,7 @@ begin
         A colormap can be provided; by default, :thermal is used."""
     function plot_2D(I;colormap=cmap_def)
         fig = Figure()
-        ax = Axis(fig[1,1])
+        ax = Axis(fig[1,1], aspect=1)
         hidedecorations!(ax)
         heatmap!(ax, I, colormap=colormap)
         return fig
@@ -347,7 +349,7 @@ begin
     function plot_integrated(x,z,I,z_scale::Real; colormap=cmap_def, resolution=(1200,800))
         fig = Figure(resolution=resolution)
         lscene = LScene(fig[1,1], show_axis=false, scenekw=(clear=true,backgroundcolor=:white,))
-        ax = Axis(fig[1,2])
+        ax = Axis(fig[1,2], aspect=1)
         hidedecorations!(ax)
 
         sliders = Dict("z" => Slider(1:length(z)), "cutoff" => Slider(0:0.05:1))
