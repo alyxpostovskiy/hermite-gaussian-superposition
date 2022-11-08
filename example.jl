@@ -17,7 +17,7 @@ begin
     ] * 0.5)     # Scale aperture
 
     # Efield at z=0, power series coefficients
-    E0 = [1;;]
+    E0 = [1 0; 0 0;]
 
     # Highest order mode used
     N = 50
@@ -105,4 +105,25 @@ begin
     E = E1 + E2; 0
     I = abs2.(E); 0
     plot_2D(I)
+end
+
+# Passing in a custom colormap
+# Note that to make a colormap / use the predefined ones,
+#   you need to explicitly use Makie. This can (and should)
+#   be done once at the top of the file with other pkg imports.
+using Makie
+begin
+    my_coefs = [0.0 1.0; 
+                1.0 0.0]
+
+    x = -2:0.02:2
+    z = 0
+
+    E = superposition(beam,my_coefs,x,z); 0
+    I = abs2.(E); 0
+    
+    # A list of predefined colormaps can be found at
+    #   https://docs.makie.org/stable/documentation/colors/
+    # You can also define your own from arrays of colors
+    plot_2D(I; colormap=:grays)
 end

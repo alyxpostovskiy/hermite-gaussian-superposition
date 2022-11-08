@@ -37,11 +37,11 @@ begin
         wvlen::T
         refr_ind::T
     end
-    zr(b::Beam) = pi * b.refr_ind / b.wvlen
-    k(b::Beam) = 2zr(b)
+    zr(b::Beam) = pi * b.w_0^2 * b.refr_ind / b.wvlen
+    k(b::Beam) = 2zr(b) / b.w_0^2
     q0(b::Beam) = zr(b) * im
     q(b::Beam) = z -> z + q0(b)
-    w(b::Beam) = z -> √(1 + (z / zr(b))^2)
+    w(b::Beam) = z -> b.w_0^2 * √(1 + (z / zr(b))^2)
 end
 
 # Aperture
@@ -119,7 +119,7 @@ begin
 
     function P_gen(beam::Beam, T, E0)
         K = min(size(T)[1] - size(E0)[1], size(T)[2] - size(E0)[2])
-        return sum(E0[i,j] * beam.w_0^(i+j-2) * T[i:i+K,j:j+K] for i in 1:size(E0)[1], j in 1:size(E0)[2])
+        return sum(E0[i,j] * beam.w_0^(i+j-3) * T[i:i+K,j:j+K] for i in 1:size(E0)[1], j in 1:size(E0)[2])
     end
 
     function P_gen(beam::Beam, apt::AbstractVector{T}, K::Integer, E0::AbstractMatrix, R::Nemo.ArbField=R_def) where T <: Segment
@@ -152,17 +152,18 @@ begin
     end
     =#
 
-    function K_terms(ϵ,L,A,E0::AbstractMatrix,n::Integer)
+    function K_terms(ϵ,L,b::Beam,E0::AbstractMatrix,n::Integer)
         if ϵ < 0
             throw(DomainError(ϵ, "ϵ must be greater than 0"))
         end
 
-        ϵ_trans = ϵ / (4A * π^(-1/2) * (n+1)^2)
+        ϵ_trans = ϵ / (π^(-1/2) * (n+1)^2)
         k = n%2
         while true
             bound = abs(a_nk_direct(big(n),big(k+2))) * 
                     sum(abs(E0[i,j]) * abs(L)^(i+j+k+2) *
-                        (1/((i+k+2)*(j)) + 1/((i)*(j+k+2)))
+                        b.w_0^(i+j-2) *
+                        (1/((i+k+1)*(j)) + 1/((i)*(j+k+1)))
                         for i in 1:size(E0)[1], j in 1:size(E0)[2])
             if bound < ϵ_trans
                 return k
@@ -171,10 +172,9 @@ begin
         end
     end
 
-    function K_terms(ϵ::Real,apt::AbstractArray{T},E0::AbstractMatrix,n::Integer) where T<:Segment
+    function K_terms(ϵ::Real,apt::AbstractArray{T},b::Beam,E0::AbstractMatrix,n::Integer) where T<:Segment
         L = apt_max(apt)
-        A = apt_area(apt)
-        return K_terms(ϵ,L,A,E0,n)
+        return K_terms(ϵ,L,b,E0,n)
     end
 
     # Taylor series coefs
@@ -217,7 +217,7 @@ begin
         Returns an arb_matrix."""
     coef(A,P) = A * P * transpose(A)
     function coef(b::Beam,apt::AbstractVector{T}, E0::AbstractMatrix, ϵ::Real, N::Integer, R::ArbField=R_def) where T <: Segment
-        K = K_terms(ϵ,apt,E0,N)
+        K = K_terms(ϵ,apt,b,E0,N)
         A = a_coefs(N,K,R)
         P = P_gen(b,apt,K,E0,R)
         return coef(A,P)
@@ -267,7 +267,7 @@ begin
             end
         end
 
-        return ret
+        return ret ./ √(b.w_0)
     end
 
     """Computes a superposition of Hermite-Gaussian modes for a given
