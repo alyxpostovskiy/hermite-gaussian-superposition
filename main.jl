@@ -57,7 +57,7 @@ begin
         x2::T
         y2::T
         function Segment(pt1::AbstractArray{S}, pt2::AbstractArray{S}) where S <: AbstractFloat
-            new{S}(pt1[1], pt2[1], pt1[2], pt2[2])
+            new{S}(pt1[1], pt1[2], pt2[1], pt2[2])
         end
     end
     Segment(t::Tuple) = Segment(t...)
@@ -83,6 +83,7 @@ end
 begin
     # Vec of length N2-N1+1 where v[n] = x^(N1+n-1)
     pow_vec(x,N::Integer) = pow_vec(x,0,N)
+    pow_vec(x,N::Tuple) = Tuple(pow_vec(x,n) for n in N)
     pow_vec(x,N1::Integer,N2::Integer) = [x^n for n in N1:N2]
 
     # Vec to Diag Mat
@@ -91,16 +92,15 @@ begin
     # Diagonal N+1 x N+1 matrix where D[n,n] = x^(n-1)
     pow_dmat(x,N::Integer) = diagonal(pow_vec(x,N))
     pow_dmat(x,N1::Integer,N2::Integer) = diagonal(pow_vec(x,N1,N2))
-    pow_dmat(x,N::Integer,R::Nemo.ArbField) = Nemo.matrix(R, pow_dmat(x,N))
-    pow_dmat(x,N1::Integer,N2::Integer,R::Nemo.ArbField) = Nemo.matrix(R, pow_dmat(x,N1,N2))
-
+    pow_dmat(x,N::Integer,R::Nemo.ArbField) = Nemo.matrix(R, pow_dmat(R(x),N))
+    pow_dmat(x,N1::Integer,N2::Integer,R::Nemo.ArbField) = Nemo.matrix(R, pow_dmat(R(x),N1,N2))
     pow_int(x1,x2,p) = (x2^(p+1) - x1^(p+1))/(p+1)
     pow_int_mat(x1,x2,N::Integer,M::Integer) = [pow_int(x1,x2,i+j-2) for i in 1:(N+1), j in 1:(M+1)]
-    pow_int_mat(x1,x2,N::Integer,M::Integer,R::Nemo.ArbField) = Nemo.matrix(R, pow_int_mat(x1,x2,N,M))
+    pow_int_mat(x1,x2,N::Integer,M::Integer,R::Nemo.ArbField) = Nemo.matrix(R, pow_int_mat(R(x1),R(x2),N,M))
 
     #N+1 by N+2 matrix
     Γ_gen(N::Integer,R::Nemo.ArbField) = 
-        Nemo.matrix(R, [i > j - 1 ? 
+        Nemo.matrix(R, [i >= j - 1 ? 
                         factorial(R(i-1)) / (factorial(R(j-1)) * factorial(R(i - j + 1))) : 
                         0 for i in 1:(N+1), j in 1:(N+2)])
 end
@@ -130,51 +130,41 @@ end
 
 # Taylor series coefs and error bound
 begin
-    function a_nk_direct(n::Integer,k::Integer)
-        norm = √(√(2/π) * factorial(n) / 2^n) * (-1)^((n-k)/2)
-        return norm * sum((2√2)^(k-2i) / (factorial(k-2i) * factorial(Integer((n-k)/2) + i) * factorial(i)) for i in max(0,Integer((k-n)/2)):Integer(floor(k/2)))
+    function a_nk_direct(n::Integer,k::Integer,R::ArbField=R_def)
+        norm = √(√(R(2)/R(π)) * factorial(n) / R(big(2)^n)) * (-1)^((n-k)/2)
+        return norm * sum((R(2√2))^(k-2i) / R(factorial(k-2i) * factorial(big(Integer((n-k)/2) + i)) * factorial(big(i))) for i in max(0,Integer((k-n)/2)):Integer(floor(k/2)))
     end
 
-    #=
-    function K_terms(ϵ,L,n::Integer)
-        if ϵ < 0
-            throw(DomainError(ϵ, "ϵ must be greater than 0"))
-        end
 
-        ϵ_trans = π^(-1/4) - √(π^(-1/2) - ϵ/4)
-        k = n%2
+    function K_terms(ρ,L,w_0,E0::AbstractMatrix,N::Integer,R::ArbField=R_def)
+        E0_abs = abs.(E0)
+        w0_pow = pow_vec(w_0,size(E0) .- 1)
+        L_pow = pow_vec(L,size(E0) .- 1)
+        α = R(w0_pow[1]' * E0_abs * L_pow[2] + L_pow[1]' * E0_abs * w0_pow[2])
+        β = R(2L .* (L_pow[1]' * E0_abs * L_pow[2]))
+        
+        ρ_adj = ρ / ( 6 * (pi)^(-3/4) / (w_0^2 * (N+1)^2) )
+        L_adj = L/w_0
+
+        k = N%2
         while true
-            if abs(a_nk_direct(big(n),big(k+2))) * abs(L)^(k+3) / (k+3) < ϵ_trans
+            scale = (α/(k+1) + β*L_adj)^(k+1) / (k+1)
+            bound = abs(a_nk_direct(big(N),big(k+2)) * scale)
+            if bound < ρ_adj
                 return k
             end
-            k+=2
+            k += 2
         end
     end
-    =#
-
-    function K_terms(ϵ,L,b::Beam,E0::AbstractMatrix,n::Integer)
-        if ϵ < 0
-            throw(DomainError(ϵ, "ϵ must be greater than 0"))
+    
+    function K_terms(ρ::Real,apt::AbstractArray{T},b::Beam,E0::AbstractMatrix,N::Integer,R::ArbField=R_def) where T<:Segment
+        if ρ < 0
+            throw(DomainError(ρ, "ρ must be greater than 0"))
         end
-
-        ϵ_trans = ϵ / (π^(-1/2) * (n+1)^2)
-        k = n%2
-        while true
-            bound = abs(a_nk_direct(big(n),big(k+2))) * 
-                    sum(abs(E0[i,j]) * abs(L)^(i+j+k+2) *
-                        b.w_0^(i+j-2) *
-                        (1/((i+k+1)*(j)) + 1/((i)*(j+k+1)))
-                        for i in 1:size(E0)[1], j in 1:size(E0)[2])
-            if bound < ϵ_trans
-                return k
-            end
-            k+=2
-        end
-    end
-
-    function K_terms(ϵ::Real,apt::AbstractArray{T},b::Beam,E0::AbstractMatrix,n::Integer) where T<:Segment
+        
         L = apt_max(apt)
-        return K_terms(ϵ,L,b,E0,n)
+        w0 = b.w_0
+        return K_terms(ρ,L,w0,E0,N,R)
     end
 
     # Taylor series coefs
@@ -217,10 +207,10 @@ begin
         Returns an arb_matrix."""
     coef(A,P) = A * P * transpose(A)
     function coef(b::Beam,apt::AbstractVector{T}, E0::AbstractMatrix, ϵ::Real, N::Integer, R::ArbField=R_def) where T <: Segment
-        K = K_terms(ϵ,apt,b,E0,N)
-        A = a_coefs(N,K,R)
-        P = P_gen(b,apt,K,E0,R)
-        return coef(A,P)
+        K = @time K_terms(ϵ,apt,b,E0,N)
+        A = @time a_coefs(N,K,R)
+        P = @time P_gen(b,apt,K,E0,R)
+        return @time coef(A,P)
     end
 end
 

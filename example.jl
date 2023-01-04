@@ -1,3 +1,5 @@
+using Revise
+
 begin
     include("main.jl")
     using .HGSuperposition
@@ -16,18 +18,33 @@ begin
         [1.0 -1.0]
     ] * 0.5)     # Scale aperture
 
+    tri = Segment([
+        [0.0 1.0],
+        [-sqrt(3)/2 -0.5],
+        [sqrt(3)/2 -0.5]
+    ] * 0.5)
+
+    quad = Segment([
+        [1.0 1.0],
+        [-0.5 0.5],
+        [-1.0 -1.0],
+        [0.5 -0.5]
+    ] * 0.5)
+
     # Efield at z=0, power series coefficients
-    E0 = [1 0; 0 0;]
+    #E0 = [1 0; 0 0;]
+    E0 = [1;;]
 
     # Highest order mode used
     N = 50
 
-    # Maximum allowable error on E(x,y,0) for any x,y in the aperture
-    ϵ = 1e-6
+    # Maximum allowable error on E(x,y,z) for any x,y,z
+    ρ = 1e-6
 end
 
+
 # Compute superposition coefficients
-C = coef(beam,sq,E0,ϵ,N); 0
+C = coef(beam,quad,E0,ρ,N); 0
 
 # Note: if nothing appears on the first plot, rerun the function.
 #   Julia compiles the code on the first run and sometimes nothing gets displayed.
